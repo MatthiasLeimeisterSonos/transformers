@@ -64,6 +64,7 @@ if is_torch_available():
         WhisperForConditionalGeneration,
         WhisperModel,
         WhisperProcessor,
+        WhisperTokenizer,
         set_seed,
     )
     from transformers.generation import (
@@ -3209,6 +3210,26 @@ class WhisperModelIntegrationTests(unittest.TestCase):
         static_generated_ids = model.generate(input_features, attention_mask=attention_mask, **gen_kwargs)
         # assert re-ordered generations match those from eager
         self.assertTrue((eager_generated_ids[permutation_idx, :] == static_generated_ids).all())
+
+    # @slow
+    def test_num_return_sequences(self):
+        torch_device = "cpu"
+        set_seed(0)
+        model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-tiny")
+        model.to(torch_device)
+        input_speech = self._load_datasamples(1)
+        feature_extractor = WhisperFeatureExtractor.from_pretrained("openai/whisper-tiny")
+        tokenizer = WhisperTokenizer.from_pretrained("openai/whisper-tiny")
+        input_features = feature_extractor(input_speech, return_tensors="pt", sampling_rate=16_000).input_features
+
+        # Perform beam search
+        output = model.generate(
+            input_features, num_beams=3, num_return_sequences=3, return_dict_in_generate=True, output_scores=True
+        )
+
+        self.assertEqual(len(output.sequences), 3)
+        hypotheses = [tokenizer.decode(output_ids, skip_special_tokens=True) for output_ids in output.sequences]
+        self.assertEqual(len(set(hypotheses)), 3)  # All hypotheses should be different
 
 
 @require_torch
