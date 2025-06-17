@@ -3217,19 +3217,30 @@ class WhisperModelIntegrationTests(unittest.TestCase):
         set_seed(0)
         model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-tiny")
         model.to(torch_device)
-        input_speech = self._load_datasamples(1)
-        feature_extractor = WhisperFeatureExtractor.from_pretrained("openai/whisper-tiny")
-        tokenizer = WhisperTokenizer.from_pretrained("openai/whisper-tiny")
-        input_features = feature_extractor(input_speech, return_tensors="pt", sampling_rate=16_000).input_features
 
-        # Perform beam search
-        output = model.generate(
-            input_features, num_beams=3, num_return_sequences=3, return_dict_in_generate=True, output_scores=True
-        )
+        for batch_size, num_beams, num_return_sequences in [[1, 3, 3], [3, 3, 3], [3, 5, 3]]:
+            input_speech = self._load_datasamples(batch_size)
+            feature_extractor = WhisperFeatureExtractor.from_pretrained("openai/whisper-tiny")
+            tokenizer = WhisperTokenizer.from_pretrained("openai/whisper-tiny")
+            input_features = feature_extractor(input_speech, return_tensors="pt", sampling_rate=16_000).input_features
 
-        self.assertEqual(len(output.sequences), 3)
-        hypotheses = [tokenizer.decode(output_ids, skip_special_tokens=True) for output_ids in output.sequences]
-        self.assertEqual(len(set(hypotheses)), 3)  # All hypotheses should be different
+            # Perform beam search
+            output = model.generate(
+                input_features,
+                num_beams=num_beams,
+                num_return_sequences=num_return_sequences,
+                return_dict_in_generate=True,
+                output_scores=True,
+            )
+
+            self.assertEqual(len(output.sequences), num_return_sequences * batch_size)
+            hypotheses = [tokenizer.decode(output_ids, skip_special_tokens=True) for output_ids in output.sequences]
+            # Check that the hypotheses for each input are different
+            for i in range(batch_size):
+                self.assertEqual(
+                    len(set(hypotheses[i * num_return_sequences : (i + 1) * num_return_sequences])),
+                    num_return_sequences,
+                )
 
 
 @require_torch

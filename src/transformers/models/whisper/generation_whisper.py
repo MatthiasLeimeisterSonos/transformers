@@ -859,6 +859,17 @@ class WhisperGenerationMixin(GenerationMixin):
         ):
             # only one call to generate_with_fallback, we can return a ModelOutput
             outputs = self._stack_split_outputs(seek_outputs, model_output_type, self.device, kwargs)
+            if num_return_sequences > 1:
+                if hasattr(outputs, "encoder_attentions") and outputs.encoder_attentions is not None:
+                    outputs.encoder_attentions = tuple(
+                        outputs.encoder_attentions[i][::num_return_sequences]
+                        for i in range(len(outputs.encoder_attentions))
+                    )
+                if hasattr(outputs, "encoder_hidden_states") and outputs.encoder_hidden_states is not None:
+                    outputs.encoder_hidden_states = tuple(
+                        outputs.encoder_hidden_states[i][::num_return_sequences]
+                        for i in range(len(outputs.encoder_hidden_states))
+                    )
             return outputs
 
         padded_outputs = _pad_to_max_length(
@@ -1078,11 +1089,11 @@ class WhisperGenerationMixin(GenerationMixin):
                 num_input_ids=decoder_input_ids.shape[-1],
             )
 
-        def split_by_batch_index(values, key, batch_idx, is_shortform, beam_indices=None):
+        def split_by_batch_index(values, key, batch_idx, is_shortform, num_return_sequences, beam_indices=None):
             if beam_indices is not None and key == "scores":
                 return [v[beam_idx].cpu() for (v, beam_idx) in zip(values, beam_indices[batch_idx][: len(values)])]
             if key in ["scores", "encoder_attentions", "encoder_hidden_states", "logits"]:
-                return [v[batch_idx].cpu() for v in values]
+                return [v[int(batch_idx/num_return_sequences)].cpu() for v in values]
             if key in ["decoder_attentions", "decoder_hidden_states", "cross_attentions"]:
                 return tuple(tuple(w[batch_idx][None].cpu() for w in v) for v in values)
             elif key == "past_key_values":
@@ -1115,7 +1126,10 @@ class WhisperGenerationMixin(GenerationMixin):
         sequence_tokens = seek_outputs["sequences"][:, start_idx:]
         seek_outputs = [
             {
-                k: split_by_batch_index(v, k, i, is_shortform, beam_indices=seek_outputs.get("beam_indices"))
+                k: split_by_batch_index(v, k, i, is_shortform,
+                                        generation_config.num_return_sequences,
+                                        beam_indices=seek_outputs.get(
+                    "beam_indices"))
                 for k, v in seek_outputs.items()
             }
             for i in range(sequence_tokens.shape[0])
