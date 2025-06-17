@@ -697,6 +697,9 @@ class WhisperGenerationMixin(GenerationMixin):
             condition_on_prev_tokens=condition_on_prev_tokens,
             generation_config=generation_config,
         )
+        # cur_bsz = batch_size
+        # batch_idx_map = list(range(batch_size))
+        # do_condition_on_prev_tokens = [condition_on_prev_tokens for _ in range(cur_bsz)]
 
         current_segments = self._prepare_segments(
             prompt_ids=prompt_ids,
@@ -808,8 +811,9 @@ class WhisperGenerationMixin(GenerationMixin):
             )
 
             # 6.7 In every generated sequence, split by timestamp tokens and extract segments
+            batch_idx_map_expanded = batch_idx_map * num_return_sequences
             for i, seek_sequence in enumerate(seek_sequences):
-                prev_i = batch_idx_map[i]
+                prev_i = batch_idx_map_expanded[i]
 
                 if should_skip[i]:
                     seek[prev_i] += seek_num_frames[prev_i]
@@ -855,17 +859,6 @@ class WhisperGenerationMixin(GenerationMixin):
         ):
             # only one call to generate_with_fallback, we can return a ModelOutput
             outputs = self._stack_split_outputs(seek_outputs, model_output_type, self.device, kwargs)
-            if num_return_sequences > 1:
-                if hasattr(outputs, "encoder_attentions") and outputs.encoder_attentions is not None:
-                    outputs.encoder_attentions = tuple(
-                        outputs.encoder_attentions[i][::num_return_sequences]
-                        for i in range(len(outputs.encoder_attentions))
-                    )
-                if hasattr(outputs, "encoder_hidden_states") and outputs.encoder_hidden_states is not None:
-                    outputs.encoder_hidden_states = tuple(
-                        outputs.encoder_hidden_states[i][::num_return_sequences]
-                        for i in range(len(outputs.encoder_hidden_states))
-                    )
             return outputs
 
         padded_outputs = _pad_to_max_length(
@@ -927,11 +920,11 @@ class WhisperGenerationMixin(GenerationMixin):
         kwargs = copy.copy(kwargs)
 
         # 6.6 Batch generate current chunk
-        seek_sequence_list = [None for _ in range(cur_bsz)]
-        seek_outputs_list = [None for _ in range(cur_bsz)]
-        needs_fallback = [False for _ in range(cur_bsz)]
-        should_skip = [False for _ in range(cur_bsz)]
-        fallback_index_map = list(range(cur_bsz))
+        seek_sequence_list = [None for _ in range(cur_bsz * generation_config.num_return_sequences)]
+        seek_outputs_list = [None for _ in range(cur_bsz * generation_config.num_return_sequences)]
+        needs_fallback = [False for _ in range(cur_bsz * generation_config.num_return_sequences)]
+        should_skip = [False for _ in range(cur_bsz * generation_config.num_return_sequences)]
+        fallback_index_map = list(range(cur_bsz * generation_config.num_return_sequences))
         if generation_config.no_speech_threshold is not None:
             self._setup_no_speech_detection(logits_processor, segment_input, decoder_input_ids, kwargs)
 
@@ -984,9 +977,9 @@ class WhisperGenerationMixin(GenerationMixin):
                 is_shortform=is_shortform,
             )
 
-            if cur_bsz < batch_size:
-                seek_sequences = seek_sequences[:cur_bsz]
-                seek_outputs = seek_outputs[:cur_bsz]
+            # if cur_bsz <= batch_size:
+            #     seek_sequences = seek_sequences[:cur_bsz]
+            #     seek_outputs = seek_outputs[:cur_bsz]
 
             # 6.7 Extract cut sequences from every sequence and check if fallback should be applied
             # Loop over each decoded audio individually as each decoding can be of a different length
@@ -1220,19 +1213,19 @@ class WhisperGenerationMixin(GenerationMixin):
     def _expand_variables_for_generation(
         self, input_features, seek, max_frames, init_tokens, batch_size, condition_on_prev_tokens, generation_config
     ):
-        if generation_config.num_return_sequences is not None and generation_config.num_return_sequences > 1:
-            batch_idx_map = list(range(batch_size * generation_config.num_return_sequences))
-            cur_bsz = len(batch_idx_map)
-            do_condition_on_prev_tokens = [condition_on_prev_tokens for _ in range(len(batch_idx_map))]
-            input_features = input_features.repeat_interleave(generation_config.num_return_sequences, dim=0)
-            seek = seek.repeat_interleave(generation_config.num_return_sequences, dim=0)
-            max_frames = max_frames.repeat_interleave(generation_config.num_return_sequences, dim=0)
-            init_tokens = init_tokens.repeat_interleave(generation_config.num_return_sequences, dim=0)
-            generation_config.num_return_sequences = 1
-        else:
-            cur_bsz = batch_size
-            batch_idx_map = list(range(cur_bsz))
-            do_condition_on_prev_tokens = [condition_on_prev_tokens for _ in range(cur_bsz)]
+        # if generation_config.num_return_sequences is not None and generation_config.num_return_sequences > 1:
+        #     batch_idx_map = list(range(batch_size)) * generation_config.num_return_sequences
+        #     cur_bsz = len(batch_idx_map)
+        #     do_condition_on_prev_tokens = [condition_on_prev_tokens for _ in range(len(batch_idx_map))]
+        #     input_features = input_features.repeat_interleave(generation_config.num_return_sequences, dim=0)
+        #     seek = seek.repeat_interleave(generation_config.num_return_sequences, dim=0)
+        #     max_frames = max_frames.repeat_interleave(generation_config.num_return_sequences, dim=0)
+        #     init_tokens = init_tokens.repeat_interleave(generation_config.num_return_sequences, dim=0)
+        #     generation_config.num_return_sequences = 1
+        # else:
+        cur_bsz = batch_size
+        batch_idx_map = list(range(batch_size))
+        do_condition_on_prev_tokens = [condition_on_prev_tokens for _ in range(cur_bsz * generation_config.num_return_sequences)]
 
         return (
             batch_idx_map,
