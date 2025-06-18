@@ -680,26 +680,10 @@ class WhisperGenerationMixin(GenerationMixin):
 
         # 5 Prepare running variables, list for generation
         num_return_sequences = generation_config.num_return_sequences
-        (
-            batch_idx_map,
-            cur_bsz,
-            input_features,
-            seek,
-            max_frames,
-            init_tokens,
-            do_condition_on_prev_tokens,
-        ) = self._expand_variables_for_generation(
-            input_features=input_features,
-            seek=seek,
-            max_frames=max_frames,
-            init_tokens=init_tokens,
-            batch_size=batch_size,
-            condition_on_prev_tokens=condition_on_prev_tokens,
-            generation_config=generation_config,
-        )
-        # cur_bsz = batch_size
-        # batch_idx_map = list(range(batch_size))
-        # do_condition_on_prev_tokens = [condition_on_prev_tokens for _ in range(cur_bsz)]
+        cur_bsz = batch_size
+        batch_idx_map = list(range(batch_size))
+        do_condition_on_prev_tokens = [condition_on_prev_tokens for _ in
+                                       range(cur_bsz * generation_config.num_return_sequences)]
 
         current_segments = self._prepare_segments(
             prompt_ids=prompt_ids,
@@ -1223,33 +1207,6 @@ class WhisperGenerationMixin(GenerationMixin):
                 should_skip = True
 
         return needs_fallback, should_skip
-
-    def _expand_variables_for_generation(
-        self, input_features, seek, max_frames, init_tokens, batch_size, condition_on_prev_tokens, generation_config
-    ):
-        # if generation_config.num_return_sequences is not None and generation_config.num_return_sequences > 1:
-        #     batch_idx_map = list(range(batch_size)) * generation_config.num_return_sequences
-        #     cur_bsz = len(batch_idx_map)
-        #     do_condition_on_prev_tokens = [condition_on_prev_tokens for _ in range(len(batch_idx_map))]
-        #     input_features = input_features.repeat_interleave(generation_config.num_return_sequences, dim=0)
-        #     seek = seek.repeat_interleave(generation_config.num_return_sequences, dim=0)
-        #     max_frames = max_frames.repeat_interleave(generation_config.num_return_sequences, dim=0)
-        #     init_tokens = init_tokens.repeat_interleave(generation_config.num_return_sequences, dim=0)
-        #     generation_config.num_return_sequences = 1
-        # else:
-        cur_bsz = batch_size
-        batch_idx_map = list(range(batch_size))
-        do_condition_on_prev_tokens = [condition_on_prev_tokens for _ in range(cur_bsz * generation_config.num_return_sequences)]
-
-        return (
-            batch_idx_map,
-            cur_bsz,
-            input_features,
-            seek,
-            max_frames,
-            init_tokens,
-            do_condition_on_prev_tokens,
-        )
 
     @staticmethod
     def _setup_no_speech_detection(logits_processor, segment_input, decoder_input_ids, kwargs):

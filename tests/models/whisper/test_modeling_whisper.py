@@ -523,6 +523,12 @@ class WhisperModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMi
         self.assertEqual(output.beam_indices.shape[0], input_features.shape[0] * 3)
         self.assertEqual(output.sequences_scores.shape[0], input_features.shape[0] * 3)
 
+        # Validate that beam search returns `num_return_sequences` distinct hypotheses
+        for batch_idx in range(input_features.shape[0]):
+            sequences = output.sequences[batch_idx * 3 : (batch_idx + 1) * 3]
+            unique_sequences = set(tuple(seq.tolist()) for seq in sequences)
+            self.assertEqual(len(unique_sequences), 3, "Beam search did not return distinct hypotheses.")
+
     # training is not supported yet
     @unittest.skip(reason="Training is not supported yet")
     def test_training(self):
