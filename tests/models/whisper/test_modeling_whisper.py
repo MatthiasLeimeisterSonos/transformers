@@ -526,7 +526,7 @@ class WhisperModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMi
         # Validate that beam search returns `num_return_sequences` distinct hypotheses
         for batch_idx in range(input_features.shape[0]):
             sequences = output.sequences[batch_idx * 3 : (batch_idx + 1) * 3]
-            unique_sequences = set(tuple(seq.tolist()) for seq in sequences)
+            unique_sequences = {tuple(seq.tolist()) for seq in sequences}
             self.assertEqual(len(unique_sequences), 3, "Beam search did not return distinct hypotheses.")
 
     # training is not supported yet
@@ -3217,7 +3217,7 @@ class WhisperModelIntegrationTests(unittest.TestCase):
         # assert re-ordered generations match those from eager
         self.assertTrue((eager_generated_ids[permutation_idx, :] == static_generated_ids).all())
 
-    # @slow
+    @slow
     def test_num_return_sequences(self):
         torch_device = "cpu"
         set_seed(0)

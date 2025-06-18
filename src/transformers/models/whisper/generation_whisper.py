@@ -682,8 +682,9 @@ class WhisperGenerationMixin(GenerationMixin):
         num_return_sequences = generation_config.num_return_sequences
         cur_bsz = batch_size
         batch_idx_map = list(range(batch_size))
-        do_condition_on_prev_tokens = [condition_on_prev_tokens for _ in
-                                       range(cur_bsz * generation_config.num_return_sequences)]
+        do_condition_on_prev_tokens = [
+            condition_on_prev_tokens for _ in range(cur_bsz * generation_config.num_return_sequences)
+        ]
 
         current_segments = self._prepare_segments(
             prompt_ids=prompt_ids,
@@ -1077,7 +1078,7 @@ class WhisperGenerationMixin(GenerationMixin):
             if beam_indices is not None and key == "scores":
                 return [v[beam_idx].cpu() for (v, beam_idx) in zip(values, beam_indices[batch_idx][: len(values)])]
             if key in ["scores", "encoder_attentions", "encoder_hidden_states", "logits"]:
-                return [v[int(batch_idx/num_return_sequences)].cpu() for v in values]
+                return [v[int(batch_idx / num_return_sequences)].cpu() for v in values]
             if key in ["decoder_attentions", "decoder_hidden_states", "cross_attentions"]:
                 return tuple(tuple(w[batch_idx][None].cpu() for w in v) for v in values)
             elif key == "past_key_values":
@@ -1110,10 +1111,14 @@ class WhisperGenerationMixin(GenerationMixin):
         sequence_tokens = seek_outputs["sequences"][:, start_idx:]
         seek_outputs = [
             {
-                k: split_by_batch_index(v, k, i, is_shortform,
-                                        generation_config.num_return_sequences,
-                                        beam_indices=seek_outputs.get(
-                    "beam_indices"))
+                k: split_by_batch_index(
+                    v,
+                    k,
+                    i,
+                    is_shortform,
+                    generation_config.num_return_sequences,
+                    beam_indices=seek_outputs.get("beam_indices"),
+                )
                 for k, v in seek_outputs.items()
             }
             for i in range(sequence_tokens.shape[0])
